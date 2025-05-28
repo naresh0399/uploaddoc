@@ -1,0 +1,365 @@
+package com.apigee.encryption;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+
+import com.apigee.constants.Algorithm;
+import com.apigee.constants.EncryptionModel;
+import com.apigee.constants.EncryptionType;
+import com.apigee.flow.execution.ExecutionContext;
+import com.apigee.flow.message.MessageContext;
+import com.apigee.util.StringToKey;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.logger.ContextLogger;
+
+public class IXCGenericCallMain {
+	
+//	static { Security.addProvider((Provider)new BouncyCastleProvider()); }
+	
+	private static final String CONTNET_JSON = "application/json";
+	private static final String CONTNET_XML = "application/xml";
+	 
+	public static void main(String[] args) {
+		execute(null, null);
+		
+	}
+
+	public static void execute(final MessageContext messageContext, final ExecutionContext executionContext) {
+		try {
+			Boolean encryptionEnabledObj = true;
+			ContextLogger.log(messageContext, "encryptionEnabled", encryptionEnabledObj);
+			final String inputPayload = "{\"clientCode\":\"-\",\"van\":\"SUM02200610100S\",\"txnAmount\":\"10.00\",\"payMode\":\"U\",\"utrn\":\"406660918011\",\"txnDate\":\"06/03/2024\",\"remitterName\":\"AKASH BALASAHEB DOMBE\",\"remitterAccNo\":\"918149325684\",\"Ifsc\":\"PYTM0123456\",\"remarks\":\"Payment from PhonePe\"}";
+			ContextLogger.log(messageContext, "inputPayload", inputPayload);
+			
+			if (null != encryptionEnabledObj && encryptionEnabledObj) {
+				final String contentType = "application/xml";
+				ContextLogger.log(messageContext, "contentType", contentType);
+				final String encryptionModel = "STANDARD";
+				ContextLogger.log(messageContext, "encryptionModel", encryptionModel);
+				final String encryptionType = "ALL_PAYLOAD";
+				ContextLogger.log(messageContext, "encryptionType", encryptionType);
+				
+				final String algorithm = "AES";
+				ContextLogger.log(messageContext, "algorithm", algorithm);
+				final String algoMode = "CBC";
+				ContextLogger.log(messageContext, "algoMode", algoMode);
+				final String algoPadding = "PKCS7Padding";
+				ContextLogger.log(messageContext, "algoPadding", algoPadding);
+				
+//				final String secretAESKey = "3aQPyM2YlFqTLjS/+XvaxjeYxVQNAIoc5Jpq3df12Z4=";
+				final String secretAESKey = "";
+				ContextLogger.log(messageContext, "staticSymmentricKey", secretAESKey);
+				final String secretAESIV = "prodsEncryptdcry";
+				ContextLogger.log(messageContext, "staticIV", secretAESIV);
+				
+				String transformation = algorithm;
+				transformation += "/" + algoMode;
+				transformation += "/" + algoPadding;
+				ContextLogger.log(messageContext, "transformation", transformation);
+				
+				String hybTransformation = null;
+				
+//				byte[] aesKeyBytes = null;
+				byte[] ivBytes = null;
+				SecretKey secretkey = null;
+				
+				Key key = null;
+//				String encSecretKey = null;
+				byte[] encryptedSessionKey = null;
+				
+				if("AES".equals(algorithm)) {
+					
+					final String hybAlgorithm = "RSA";
+					ContextLogger.log(messageContext, "algorithm", algorithm);
+					final String hybAlgoMode = "ECB";
+					ContextLogger.log(messageContext, "algoMode", algoMode);
+					final String hybAlgoPadding = "PKCS1Padding";
+					ContextLogger.log(messageContext, "algoPadding", algoPadding);
+					final String keySize = "256";
+					ContextLogger.log(messageContext, "keySize", keySize);
+					final String iVLength = "128";
+					ContextLogger.log(messageContext, "iVLength", iVLength);
+					
+					if(hybAlgorithm != null && hybAlgorithm.length() > 0) {
+						hybTransformation = hybAlgorithm;
+						hybTransformation += "/" + hybAlgoMode;
+						hybTransformation += "/" + hybAlgoPadding;
+						ContextLogger.log(messageContext, "hybTransformation", hybTransformation);
+						
+						KeyGenerator keyGen = KeyGenerator.getInstance(algorithm);
+				        keyGen.init(Integer.parseInt(keySize));
+				        secretkey = keyGen.generateKey();
+				        
+				        final String rsaPubKey = "MIIHPDCCBiSgAwIBAgIQA/tjPQUjCFhYLIwvNiRa+zANBgkqhkiG9w0BAQsFADBNMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMScwJQYDVQQDEx5EaWdpQ2VydCBTSEEyIFNlY3VyZSBTZXJ2ZXIgQ0EwHhcNMjMwNzE4MDAwMDAwWhcNMjQwNzE4MjM1OTU5WjCBkzELMAkGA1UEBhMCREUxGzAZBgNVBAgTEkJhZGVuLVd1ZXJ0dGVtYmVyZzERMA8GA1UEBxMIV2FsbGRvcmYxDzANBgNVBAoTBlNBUCBTRTFDMEEGA1UEAxM6OGQzNzhlYmUtNjAzZC00YjE2LWFmZjktY2NhYTFmYThkMTIxLmNwaS5oYW5hLm9uZGVtYW5kLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMHc6cfluOJpzZfEuX9zo0OL4MhCuabETXi0sF1BuswFSDR9O05gZk9Vx/TAr20kE8gHxqU++CgFoImmt/gsE/55OzAaN2z2jEIzO3+P9dHyTC5NEZTob5Qbm4daK6V4qbPD/F3uNV7HIhsmSjJfdIYSUO33V8VzcKj4QGsfyiIvE2qrns/kmyWl6NtoKf5Wt3v3scPNXGGTdigl0re/w9Mr38jpHSLAvDEXw64SsNVBPfINAeDB/0tz9ftJJVlN70fhECN0kwhAX8FlmwoESh+AbyZ5Efd1ric0Ijnr5xz01LC3iEAEWENFqv7dqYcdCPcKxHspG89kiFc0VQSPE8ECAwEAAaOCA88wggPLMB8GA1UdIwQYMBaAFA+AYRyCMWHVLyjnjUY4tCzhxtniMB0GA1UdDgQWBBSd4jDRxWwRTgC2JWka6JXdQrEzADB9BgNVHREEdjB0gjo4ZDM3OGViZS02MDNkLTRiMTYtYWZmOS1jY2FhMWZhOGQxMjEuY3BpLmhhbmEub25kZW1hbmQuY29tgjZhcGFjLWRldi1yeGZvMWxrOC5pdC1jcGkwMDQuY3BpLmFwMTEuaGFuYS5vbmRlbWFuZC5jb20wDgYDVR0PAQH/BAQDAgWgMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjCBjQYDVR0fBIGFMIGCMD+gPaA7hjlodHRwOi8vY3JsMy5kaWdpY2VydC5jb20vRGlnaWNlcnRTSEEyU2VjdXJlU2VydmVyQ0EtMS5jcmwwP6A9oDuGOWh0dHA6Ly9jcmw0LmRpZ2ljZXJ0LmNvbS9EaWdpY2VydFNIQTJTZWN1cmVTZXJ2ZXJDQS0xLmNybDA+BgNVHSAENzA1MDMGBmeBDAECAjApMCcGCCsGAQUFBwIBFhtodHRwOi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMwfgYIKwYBBQUHAQEEcjBwMCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20wSAYIKwYBBQUHMAKGPGh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydFNIQTJTZWN1cmVTZXJ2ZXJDQS0yLmNydDAJBgNVHRMEAjAAMIIBfgYKKwYBBAHWeQIEAgSCAW4EggFqAWgAdgDuzdBk1dsazsVct520zROiModGfLzs3sNRSFlGcR+1mwAAAYlnaNn3AAAEAwBHMEUCIQC9jrRVWrshNxVmvEi3Cu4jyJTnGHf5KKKiZrEpQjW7cwIgJC/XIcVkzTNpSo+omtzjE2hupucMsgGow7dpnGIHL+8AdwBIsONr2qZHNA/lagL6nTDrHFIBy1bdLIHZu7+rOdiEcwAAAYlnaNpMAAAEAwBIMEYCIQCSZrTxHN6ZP7nmfEJhw+QcvktI0E7ox1yA/5y47vJpuwIhAP5rRpRkBFa066P20P5eYJrLHCc1UW5BtBIyPrFRMLwmAHUA2ra/az+1tiKfm8K7XGvocJFxbLtRhIU0vaQ9MEjX+6sAAAGJZ2jaAQAABAMARjBEAiAdEGh0wtTpMMSyvqQoxqnlihPK3jBJ7HUsPyxqRQ28QgIgFiKBh4fTt0wmAFYMOrdAxQiNBcDPLxH8UMMfM59stJ0wDQYJKoZIhvcNAQELBQADggEBAJP9KxnPQzA0Qgxzk9UdbRrGgP+GwNYVW0ZFEjTiM7V1RKkLWLGVdMMZPQcBCGy67bTuSBfyusXaJr0FHZhQNKC57jMSG8gb2cm8e/GYOw7sLt3B2dNtpDKA3tRjL0eMXE8FhMx5Wd+EaCDQqMYwrP2ooljz8yavSw1H4lC1Yf0l6aqtwza7NiPo71Spkmt8Vm33xXVlm0ydmTy5U/AhZXPXuDZOUkr0k46XhyPRWXeDJCXzKH2oX7bPZeyqjCJJmr+MYOOpk7Zd/3LCmuSq3+lBuhpX+z0inD2PGk65zAMzm0DMtWomfGPV8wOANjCeDlXiDuospWZgEwwxVM5dI64=";
+						ContextLogger.log(messageContext, "rsaPubKey", rsaPubKey);
+						key = StringToKey.stringToPublicKey(messageContext, rsaPubKey, hybAlgorithm);
+				        
+						if(null != iVLength && !iVLength.isEmpty()) {
+							ivBytes = new byte[Integer.parseInt(iVLength)/8];
+						}
+				        Cipher rsaCipher = Cipher.getInstance(hybTransformation);
+				        rsaCipher.init(Cipher.ENCRYPT_MODE, key);
+				        encryptedSessionKey = rsaCipher.doFinal(secretkey.getEncoded());
+					}
+				}
+				
+				if(Algorithm.RSA.name().equals(algorithm)) {
+					final String rsaPubKey = "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";
+					ContextLogger.log(messageContext, "rsaPubKey", rsaPubKey);
+					key = StringToKey.stringToPublicKey(messageContext, rsaPubKey, algorithm);
+				} 
+//				else if (Algorithm.AES.name().equals(algorithm)) {
+//					final String algoKeySize = (String) messageContext.getVariable("algoKeySize");
+//					final String algoIVLength = (String) messageContext.getVariable("algoIVLength");
+//					if(algoKeySize != null && algoKeySize.length() > 0) {
+//						aesKeyBytes = new byte[Integer.parseInt(algoKeySize)];
+//					}
+//					if(algoIVLength != null && algoIVLength.length() > 0) {
+//						aesIV = new byte[Integer.parseInt(algoIVLength) / 8];
+//					}
+//					
+//					encSecretKey = (String) messageContext.getVariable("encSecretKey");
+//					ContextLogger.log(messageContext, "encSecretKey", encSecretKey);
+//					key = new SecretKeySpec(encSecretKey.getBytes(), algorithm);
+//				}
+					
+				
+				if (EncryptionModel.STANDARD.name().equalsIgnoreCase(encryptionModel)) {
+					String output_resp = null;
+					if (EncryptionType.ALL_FIELD.name().equalsIgnoreCase(encryptionType)) {
+						if(contentType.equalsIgnoreCase(CONTNET_JSON)) {
+							ObjectMapper objectMapper = new ObjectMapper();
+							JsonNode jsonNode = objectMapper.readTree(inputPayload);
+	
+							JsonNode encodedJson = encryptJson(jsonNode, key, transformation, null, null);
+							ContextLogger.log(messageContext, "ENCPayload", encodedJson.toPrettyString());
+							output_resp = encodedJson.toString();
+						}
+						else if (contentType.equalsIgnoreCase(CONTNET_XML)) {
+							String xmlRootElement = getXMLRootElement(inputPayload);
+							ObjectMapper xmlMapper = new XmlMapper();
+							JsonNode rootNode = xmlMapper.readTree(inputPayload);
+							JsonNode encodedJson = encryptJson(rootNode, key, transformation, null, null);
+							XmlMapper xmlResultMapper = new XmlMapper();
+							String encryptedXmlPayload = xmlResultMapper.writeValueAsString(encodedJson);
+							String encodedXml = encryptedXmlPayload.replace("ObjectNode", xmlRootElement);
+							ContextLogger.log(messageContext, "ENCPayload", encodedXml);
+							output_resp = encodedXml;
+						} else {output_resp = "";}
+					}
+					else if (EncryptionType.SELECT_FIELD.name().equalsIgnoreCase(encryptionType)) {
+						String fields = "[\"van\", \"remitterAccNo\"]";
+						ObjectMapper objectMapper = new ObjectMapper();
+			            ArrayList<String> fieldsToEncrypt = objectMapper.readValue(fields, ArrayList.class);
+			            if(contentType.equalsIgnoreCase(CONTNET_JSON)) {
+							ContextLogger.log(messageContext, "fieldsToEncrypt", fields);
+							JsonNode jsonNode = objectMapper.readTree(inputPayload);
+	
+							JsonNode encodedJson = encryptJson(jsonNode, key, transformation, fieldsToEncrypt, null);
+							ContextLogger.log(messageContext, "ENCPayload", encodedJson.toPrettyString());
+							output_resp = encodedJson.toString();
+			            } else if (contentType.contains("xml".toLowerCase())) {
+			            	String xmlRootElement = getXMLRootElement(inputPayload);
+							ObjectMapper xmlMapper = new XmlMapper();
+							JsonNode rootNode = xmlMapper.readTree(inputPayload);
+							JsonNode encodedJson = encryptJson(rootNode, key, transformation, fieldsToEncrypt, null);
+							XmlMapper xmlResultMapper = new XmlMapper();
+							String encryptedXmlPayload = xmlResultMapper.writeValueAsString(encodedJson);
+							String encodedXml = encryptedXmlPayload.replace("ObjectNode", xmlRootElement);
+							ContextLogger.log(messageContext, "ENCPayload", encodedXml);
+							output_resp = encodedXml;
+						} else {output_resp = "";}
+					}
+					else if (EncryptionType.ALL_PAYLOAD.name().equalsIgnoreCase(encryptionType)) {
+//						final String encSecretKey = (String) messageContext.getVariable("encSecretKey");
+//						ContextLogger.log(messageContext, "encSecretKey", encSecretKey);
+//						SecretKey secretKey = new SecretKeySpec(encSecretKey.getBytes(), algorithm);
+						
+						if(secretAESKey != null && secretAESKey.length() > 0) {
+							byte[] decodedSecretKey = Base64.getDecoder().decode(secretAESKey.getBytes());
+							ivBytes = secretAESIV.getBytes();
+							String encrypt = hybrid_encrypt(algorithm, transformation, decodedSecretKey, ivBytes, inputPayload);
+							ContextLogger.log(messageContext, "AESENCPayload", encrypt);
+							output_resp = encrypt;
+						} else {
+							IvParameterSpec ivParameterSpec = null;
+							String enciv = "";
+							if(null != ivBytes && ivBytes.length > 0) {
+								System.arraycopy(secretkey.getEncoded(), 0, ivBytes, 0, ivBytes.length);
+								ivParameterSpec = new IvParameterSpec(ivBytes);
+								enciv = encodeToBase64(ivBytes);
+							}
+							String encrypt = encrypt(inputPayload, secretkey, transformation, ivParameterSpec);
+							ContextLogger.log(messageContext, "ENCPayload", encrypt);
+							output_resp = "{\r\n"
+									+ "	\"encrypted_payload\" : \""+encrypt+"\",\r\n"
+									+ "	\"encrypted_key\" : \""+Base64.getEncoder().encodeToString(encryptedSessionKey)+"\",\r\n"
+									+ "	\"iv\" : \""+enciv+"\"\r\n"
+									+ "}";
+							if(contentType.equalsIgnoreCase("application/json")){
+								ObjectMapper objectMapper = new ObjectMapper();
+					            JsonNode jsonNode = objectMapper.readTree(output_resp);
+					            XmlMapper xmlMapper = new XmlMapper();
+					            String xmlOutput = xmlMapper.writeValueAsString(jsonNode);
+					            output_resp = xmlOutput.replace("ObjectNode", "XML");
+							} else {}
+						}
+					}
+					else {
+						output_resp = "NA";
+						ContextLogger.log(messageContext, "outputPayload", output_resp);
+					}
+//					messageContext.setVariable("outputPayload", output_resp);
+					ContextLogger.log(messageContext, "outputPayload", output_resp);
+				}
+			}
+			Boolean checksumEnabled = false;
+			if(null != checksumEnabled && checksumEnabled)
+			{	
+				ContextLogger.log(messageContext, "checksumEnabled", checksumEnabled);
+				
+				final String checksumAlgorithm = (String) messageContext.getVariable("checksumAlgorithm");
+				ContextLogger.log(messageContext, "checksumAlgorithm", checksumAlgorithm);
+				
+				final String checksumSecret = (String) messageContext.getVariable("checksumSecret");
+				String hashString = null;
+				if(checksumSecret != null && checksumSecret.length() > 0) {
+					ContextLogger.log(messageContext, "checksumSecret", checksumSecret);
+					hashString = hmacHash(inputPayload, checksumAlgorithm, checksumSecret);
+				}
+				else
+					hashString = hashString(inputPayload, checksumAlgorithm);
+				
+//				messageContext.setVariable("checksumOutput", hashString);
+				ContextLogger.log(messageContext, "checksumOutput", hashString);
+			}
+		} catch (Exception e) {
+			ContextLogger.log(messageContext, "ENCException", e.getMessage());
+			e.printStackTrace();
+//			return ExecutionResult.ABORT;
+		}
+	}
+
+	public static String encodeToBase64(byte[] encryptedBytes) {
+		return Base64.getEncoder().encodeToString(encryptedBytes);
+	}
+
+	public static String encrypt(String plaintext, Key securityKey, String transformation, IvParameterSpec ivParameterSpec) throws Exception {
+		if (plaintext.isEmpty())
+			return plaintext;
+
+		Cipher cipher = Cipher.getInstance(transformation);
+		if(ivParameterSpec == null)
+			cipher.init(Cipher.ENCRYPT_MODE, securityKey);
+		else
+			cipher.init(Cipher.ENCRYPT_MODE, securityKey, ivParameterSpec);
+		byte[] encryptedBytes = cipher.doFinal(plaintext.getBytes());
+		return encodeToBase64(encryptedBytes);
+	}
+	
+	public static String hybrid_encrypt(String algorithm, String transformation, byte[] key, byte[] iv, String input)
+			throws Exception {
+		if (input.isEmpty())
+			return input;
+
+		SecretKeySpec secretKeySpec = new SecretKeySpec(key, algorithm);
+		Cipher cipher = Cipher.getInstance(transformation);
+		if(transformation.contains("CBC")) {
+			IvParameterSpec ivSpec = new IvParameterSpec(iv);
+			cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivSpec);
+		}
+		else
+			cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+		byte[] encryptedBytes = cipher.doFinal(input.getBytes());
+		return encodeToBase64(encryptedBytes);
+	}
+
+	private static JsonNode encryptJson(JsonNode node, Key publicKey, String transformation, List<String> fieldsToEncrypt, IvParameterSpec ivParameterSpec) {
+		if (node.isObject()) {
+			ObjectNode objectNode = (ObjectNode) node;
+			objectNode.fields().forEachRemaining(entry -> {
+				String key = entry.getKey();
+				JsonNode value = entry.getValue();
+				if(null != fieldsToEncrypt && !fieldsToEncrypt.contains(key))
+					objectNode.set(key, new TextNode(value.asText()));
+				else	
+					objectNode.set(key, encryptJson(value, publicKey, transformation, fieldsToEncrypt, ivParameterSpec));
+			});
+		} else if (node.isArray()) {
+			ArrayNode arrayNode = (ArrayNode) node;
+			for (int i = 0; i < arrayNode.size(); i++) {
+				arrayNode.set(i, encryptJson(arrayNode.get(i), publicKey, transformation, fieldsToEncrypt, ivParameterSpec));
+			}
+		} 
+//		else if (node.isTextual() || node.isInt() || node.isDouble()) {
+		else if (node.isValueNode() && !node.isNull()) {
+			try {
+				return new TextNode(encrypt(node.asText(), publicKey, transformation, ivParameterSpec));
+			} catch (Exception e) {
+				throw new RuntimeException(e.getMessage());
+			}
+		}
+		return node;
+	}
+	
+	private static String hashString(String input, String algorithm) throws NoSuchAlgorithmException {
+        MessageDigest md = MessageDigest.getInstance(algorithm);
+        byte[] hashBytes = md.digest(input.getBytes());
+
+        StringBuilder hexStringBuilder = new StringBuilder();
+        for (byte hashByte : hashBytes) {
+            hexStringBuilder.append(String.format("%02x", hashByte));
+        }
+
+        return hexStringBuilder.toString();
+    }
+	
+	private static String hmacHash(String input, String algorithm, String secretKey) throws NoSuchAlgorithmException, InvalidKeyException {
+		Mac hmac = Mac.getInstance(algorithm);
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), algorithm);
+        hmac.init(secretKeySpec);
+        byte[] hmacBytes = hmac.doFinal(input.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hexStringBuilder = new StringBuilder();
+        for (byte hashByte : hmacBytes) {
+            hexStringBuilder.append(String.format("%02x", hashByte));
+        }
+        return hexStringBuilder.toString();
+    }
+	
+	private static String getXMLRootElement(String xmlContent) throws ParserConfigurationException, SAXException, IOException {
+		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        InputSource inputSource = new InputSource(new StringReader(xmlContent));
+        Document document = builder.parse(inputSource);
+        Element rootElement = document.getDocumentElement();
+        return rootElement.getTagName();
+	}
+}

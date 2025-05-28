@@ -1,0 +1,123 @@
+package com.apigee.encryption;
+
+
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayInputStream;
+import java.security.*;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.util.Base64;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class PRODENCRYPT {
+
+    public static void main(String[] args) throws Exception {
+        String publicKeyBase64 = "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";
+
+    	 PublicKey publicKey = stringToPublicKey(publicKeyBase64);
+        String output = encryptPayload(publicKey);
+        System.out.println("Final Encrypted Payload with Session Key:\n" + output);
+    }
+
+    public static PublicKey stringToPublicKey(String publicKeyBase64) throws Exception {
+//      byte[] keyBytes = Base64.getDecoder().decode(publicKeyBase64);
+//      X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+//      KeyFactory kf = KeyFactory.getInstance("RSA");
+//      return kf.generatePublic(spec);
+      
+      byte[] keyBytes = Base64.getDecoder().decode(publicKeyBase64);
+		X509Certificate certificate = (X509Certificate) CertificateFactory.getInstance("X.509")
+				.generateCertificate(new ByteArrayInputStream(keyBytes));
+		System.out.println(certificate.getPublicKey());
+		return certificate.getPublicKey();
+  }
+    
+    public static String encryptPayload( PublicKey publicKey) {
+   
+     
+        String inputPayload = "{\"corpid\":\"HCCL\",\"custid\":\"50916637\",\"beneficiaryAccountNumber\":\"1234567890\"}";
+
+        try {
+            // Generate AES Key
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+            keyGen.init(128);
+            SecretKey aesKey = keyGen.generateKey();
+            byte[] iv = new byte[16]; // 16 bytes IV for AES
+            IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+            // Encrypt AES key using RSA
+            Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            rsaCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+            byte[] encryptedSessionKey = rsaCipher.doFinal(aesKey.getEncoded());
+
+            // Encrypt array fields if any
+            Pattern arrayPattern = Pattern.compile("\\[(\\s*\"[^\"]+\"\\s*(,\\s*\"[^\"]+\"\\s*)*)\\]");
+            Matcher arrayMatcher = arrayPattern.matcher(inputPayload);
+            StringBuffer sb = new StringBuffer();
+            while (arrayMatcher.find()) {
+                String arrayContent = arrayMatcher.group(1);
+                Matcher valMatcher = Pattern.compile("\"([^\"]+)\"").matcher(arrayContent);
+                StringBuffer arraySb = new StringBuffer();
+                while (valMatcher.find()) {
+                    String value = valMatcher.group(1);
+                    if (value.length() > 0) {
+                        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(aesKey.getEncoded(), "AES"), ivSpec);
+
+                        byte[] encryptedBytes = cipher.doFinal((new String(iv) +value).getBytes());
+                        String encValue = Base64.getEncoder().encodeToString(encryptedBytes);
+                        valMatcher.appendReplacement(arraySb, "\"\"" + encValue + "\"");
+                    }
+                }
+                valMatcher.appendTail(arraySb);
+                arrayMatcher.appendReplacement(sb, "[" + arraySb + "]");
+            }
+            arrayMatcher.appendTail(sb);
+            inputPayload = sb.toString();
+
+            // Encrypt individual string values in JSON
+            Pattern kvPattern = Pattern.compile("\"(\\w+)\"\\s*:\\s*\"([^\"]*)\"");
+            Matcher matcher = kvPattern.matcher(inputPayload);
+            StringBuffer result = new StringBuffer();
+            while (matcher.find()) {
+                String key = matcher.group(1);
+                String value = matcher.group(2);
+
+                String encValue = value;
+                if (!value.isEmpty()) {
+                    Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(aesKey.getEncoded(), "AES"), ivSpec);
+                    byte[] encrypted = cipher.doFinal((new String(iv) +value).getBytes());
+                    encValue = Base64.getEncoder().encodeToString(encrypted);
+                }
+
+                matcher.appendReplacement(result, "\"" + key + "\": \"" + encValue + "\"");
+            }
+            matcher.appendTail(result);
+
+            // Inject session key info
+            String encryptedJson = result.toString();
+            if (encryptedJson.endsWith("}")) {
+                encryptedJson = encryptedJson.substring(0, encryptedJson.length() - 1);
+            }
+
+            String sessionKeyJson = ",\"X-Session-Key\": \"" +
+                    Base64.getEncoder().encodeToString(encryptedSessionKey) + "\", " +
+                    "\"Key\": \"" +
+                    Base64.getEncoder().encodeToString(aesKey.getEncoded()) + "\"}";
+            System.out.println("Encryption Pay: "+encryptedJson);
+
+            return encryptedJson + sessionKeyJson;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return "";
+    }
+}
+

@@ -1,0 +1,333 @@
+package com.apigee.decryption;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+
+import com.apigee.constants.Algorithm;
+import com.apigee.constants.EncryptionModel;
+import com.apigee.constants.EncryptionType;
+import com.apigee.flow.execution.ExecutionContext;
+import com.apigee.flow.message.MessageContext;
+import com.apigee.util.StringToKey;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.logger.ContextLogger;
+
+public class IXCGenericCallMain {
+	
+//	static {Security.addProvider(new BouncyCastleProvider());}
+	
+	private static final String CONTNET_JSON = "application/json";
+	private static final String CONTNET_XML = "application/xml";
+	 
+	public static void main(String[] args) {
+		execute(null, null);
+		
+	}
+
+	public static void execute(final MessageContext messageContext, final ExecutionContext executionContext) {
+		try {
+			Boolean decryptionEnabledObj = true;
+			ContextLogger.log(messageContext, "decryptionEnabledObj", decryptionEnabledObj);
+			final String inputPayload = "{\"ClientCode\":\"SG4CEhUmKzlZ9TkOsqdtnRVMtVqiyoRrqbAEuxr1+Wmg+QeSpq1XYDwxUdsE5DYgnTqrym9Fm5QZIky2njTP8npqZsMfpWSKdQSu7lfVHIshjiq3w7q/Imk88R8l3MmqzMGs/LJgyBz/ctAG7sudBn60Yha7a2pDWIy2TeeZdxuLs7nbnBOVSfXR91CJj2IbYb0GoKmPpiYad8NImrfSUDoOnNmvN4Q6v/cwBMau4bA60d6vZ1L/zLPWVBoVi0FdIG64+aoQA3MYQb6oWFpb7u+qH+98dQw5Vk29kXNQYGzcW8WUcrT+p1+pPsIiAyuz4EQFHIqPsvG6WT/AXeWoRQ==\",\"VirtualAccountNumber\":\"iSifK/nGkcWc0RbpK1Mdx5Wthyp8HpvzraFiC+DADVO75IVrZDidspLMddCW2xXYRHWMLEKj3u6EoUG6NhRKJLHTzD5pkQOXuVx7xm7fVLlloWwNAXgFbltzxmOg527zlOHlJ6yuue4oQNaMI/ZhhsF5NUP/K0Lc8qmm+UiyVrUC9CmAFsKcoBsprZGClUut6x11/Pf3hAAfMX3VVux599tkmDGdQNxn6fhW4J+crg4h0y7p+6YETBZQfbdkxjSobcJOPRcT63ZbjM0MEyktXsAnoxr2KHl8Sumxeyzx5cS0iD0BOj0PKNNbDqJgA1vkuVwjQEbYXcLJBqPd0xNsaw==\",\"TranAmt\":\"OD4c3Z85oWeGTXBqtaBfhUDbdOt3joldAoXr/cbZwD29JVjIA3PZN+XlJy72Ut423m9qIOqLJBE/TWwXDFzPYcIwT03yh+YccBDwH7wGuXvDAKQCBMopgP9rV+JqYtEnUOlQZh8iqjcHfAJFhwEiug8k2g+eo46E65OnAl3zlIG8qYXgZ4L+vNznBrjkiCjLgOFFVjpxRpopCqZANCDLtddu81TR16HiISW/ZuYoDQc7rhi/dfxH0mlTFPMKnvseWkmNBGBchLzFgK3uSEqQz2VRal0WN7xIidvbYkD4EIZC3K7dPWnPljeSbM/rtlCUqDtB0tPV6WVGaY9fQ5ZRCQ==\",\"CURRENCY_CODE\":\"MiOzgl+zRB4V6mcfqEc6UqKbX8qmA3Y4hIbOi/sshR8aeb1CLDhtsCGbx2neV0mzAyAIAsBVs270Vwj5LrTgPbeHMqJVo6cZbv6kT/otCKU0ABvPmog58ryDmPsFzyU94jOtLnjlS1dh1bEVcwwW+wa+RYCrqGZFiaUD5VNX7hxgzSVF/8h1sSrQsNRr8djzxPuRJ1MOCdxS/iC9WJxVVSTzOoR8mwXrj9e7+OXY97Qz9GzerJv6O+oq8Ar9ixhga11hbFiLNo7vSEo+Rb1i1GrNtdTeJQgklhyInLdFwO3im5fFXTeWceI/8WzmoNRg8Onj4OSJ9VsujJQgWG6PHA==\",\"PaymentMode\":\"QJ1ddXFoscrkJOL8fA3+aXf0hqgixs67fCYJ7K4choUB/n9UAsmj4UQRTaDdHMzFHwA8FHvLgfafi64MrBiBuHc8gCUXa48JdvJuI/xgm70t/Y/CgxTRbNp4HXUS3h9AseHOIfku4mk9nJrciL+Y0HhSAwxCFkndZICsolqzVaQhgyWKy5Ias5jxlITJ/vRxXESPrnne79PK6odFwDyCj+nvbvD2mFIHlmOaydIE96xg+YpxGwDL/DV8FYwd16BxTJZm/16q7gkSCgLz28VLio5ad1VwUTbduGeT0Dz2PDgfz2uXLu1Q3k5hsg2Hiizous7DOrqG2ctlmjj2i2lo3g==\",\"UTRNo\":\"MaNoP95Jsrysm+mDlOPdJwecwXMX6GfxaTCrfpsf8duN1Z6bXRgIHhJVnGYAfYk7Ghv/eu1eGYciqd2csk71NMGtsN3FPrYBSaMVejlJkD6WoAl1QGpNk7yJ1ClnLD6HACjF/LbVILw4ceGAUZIPm/ksml3v8Rj5O4NoibErkZo6Ps6U8JZ86YNMu3+TOdsKafI3Li2OU3TNmbpwBq/ImjseeNXxBldJPxYyrQMp1HakICvgt+G9agSDrzPB46GfGu7MRgxLRtLn7g3j4CEAOh6UJN7wpTy3K7QWMAvUg1Q14Ikpth0miWBtg0Qf7oLfJinC43fFGxY4jXns+bYpmA==\",\"Date\":\"MwymaskI/TuojuFjzxTapViRCizqffqF8E1vAIaIzH5aMAL2DzNF5kH8HzeH55JHEMOKjb1Urci/PVXoh5Opkw27iw3T3WGeEwl0/qnZYwRWnybcLrU2z/4IjQOGgBRNa4ZW11sYdF+M3FdYPJ01hTCsO3GVBk8NoJNv8zsaDEdnvqU0p3UHj09UxF3cLw7WlzX9Kx2fS7xTac56hiXHMUXCYFaNAcJaycUCBWnvktBGKKBEjBF0yXvmRXKRZFD8sTwtEi/+vBHvPtP1cxUZaOUoLcrwtV/72gE6PR7LNy7WtXdQV1OuNK+oQc2vlfy3vABfI5fqyetG1YJ7Ttd3wA==\",\"RemitterName\":\"Q5GDD8MoCXrrci0Yhpelc29BXeH5g9SBPZdYkaaNaElMSKDC74MnFoznQy55EpnbuafWJTTn86Mpa9nHx+F0oBPpJJNpBKGlg3dcuUs7i0FjWFQJ8d1mlj7FUzL5plTfCgNbcvsEk4hfcbPeFjgmBD0ut3NiDvUutnU/y4Z6p+p8snyyRqrjuvuxjb+PMC4akO1xgGGljEqICxy73xzi4Su+PVfUzFZupd/a3xkZvxBy1Kd/zryo6s4Mv6Cet9qOo3D3MwleTtp+vc75K02bNYjjcB3k1qv3Aob28xQzMjnzgYCRiopYkHTAEvG4OplQY4ZGvG9NujOHw/KpE+e9pQ==\",\"RemitterAccountNumber\":\"AECEzO1Pc2Gp3KAPkmgZpj5QZwDJoKR484SV/Ljra2/dWWeqkoD7ZdV5HqIinocYEb1jGhptcuyNpXJYnIyfPeU65YMse6afmFXxUqLIVc5jr4GFIDIhG37aHCuQnCy/RTctldnJpXev99C3O9I/kbAz0QBQIYdJEJRTktyxDdjaYMuz2Hgp/5dxGM6Xz1Lc0pEYG9aR5bVN6uomBO21LjJIorK9eKKoBuIWr7ZqPxx5HlIsFH5c1l8cwN4nixutWTyt3lL7Rp+33ht8ti1laHVSUfQGBnJMhmsfCfgeCymt9m3pd+Ns4Hcss820QhhpRLyGJJ8XlhLouGi3PK+KLQ==\",\"IFSCCode\":\"YZt1qZ5dd20oLwsUZ8FQUSt+PDhw54rkmkyELpehtpizkA9X050QmAyE//8jkDlkIOZDcnv9U1QInaFX6km7NGSfiAIyK3OEwmz1TFU6xCsqmI5ZimBF08qiBurPR60Juxp9iRJATVk7pB9Dux1WSp6aQSHjyJipSH3b/2SYrVPjfJmMUfbL1O9Rz9cZP2JQDFQqS4YA/OHbX8gqjaFMqJ1gdLLZ9tym1TubmHO/S2gEApQGmvD+c4kPzKGnTW1ed+wALbVX0haWcMVuw/bP8v6dkgQ5Kt71N17tlh6nVSm9KTx87jwxCpYVr3Vf7mUJTX57K895pll+W6LkquOJiQ==\",\"CREDIT_ACCOUNT_NUMBER\":\"kAnEmoG1yf13y2bcx/WZslXihtBCYzX2aeivLJ8gfQhKnlv4ICwdv1b8vvN4HksNHxTrqobzUgAD1cYH5g6a4sDDdg2sElZUgoh5+moDHpdm9WLOEJXSQi4MqyuD3q0i1IcxydTCXNKqCo4PkL7bIGqXztG46VPTezR6e5o3q0sjV0dYCfPUN69kMRyP8pbRgeGi5pUBxz57a/bCS52ipTfxezTwV4nIt1Hz7hYmJq4hVj+3S2QkduBrabfNU4T7XfEFwyhQcHKz9wJIlHc5lJ4+X83UT1K1lLcRU5cVJZ3mEqQ5zBhocvC5B8mXWG1GmiYEUu0tlFONitwm53VaIQ==\",\"SenderInfo\":\"dK6suWvTNWE3EMAHnU9AB8NZ9/OmG8J2ba5dwrds1A1m7gP1ET80SwsxoVv5vZFgvt2ky4qlod1GglDMaf6eicJhoBfPaXUymIWIZb6dFQDCu7UnzhBDLtIFXRH4innlJYHhvepIiBbOWbsgiHdjao0OGJ4VkVlXSiM8ULbNdzUnWj+17xzVpD/UAuIFQwZOKKx38r0Xi2KSbleMHnYodFZF2Evs1Cr0eUKAME14kusDS9Zeh1GE5LrRDrmH6BEaosPSvBcKl7OrmW9GeZqbmOvxWQlA56F5/YRsbsmdtwheeawk/W+CpcNPLH3vQnN3Yz0bJEqkDBJ2YdZfrwAnKQ==\"}";
+			ContextLogger.log(messageContext, "inputPayload", inputPayload);
+			
+			if (null != decryptionEnabledObj && decryptionEnabledObj) {
+				final String contentType = "application/json";
+				ContextLogger.log(messageContext, "contentType", contentType);
+				final String decryptionModel = "STANDARD";
+				ContextLogger.log(messageContext, "decryptionModel", decryptionModel);
+				final String decryptionType = "ALL_FIELD";
+				ContextLogger.log(messageContext, "decryptionType", decryptionType);
+				
+				final String algorithm = "RSA";
+				ContextLogger.log(messageContext, "algorithm", algorithm);
+				final String algoMode = "ECB";
+				ContextLogger.log(messageContext, "algoMode", algoMode);
+				final String algoPadding = "OAEPWithSHA-1AndMGF1Padding";
+				ContextLogger.log(messageContext, "algoPadding", algoPadding);
+				
+				String transformation = algorithm;
+				transformation += "/" + algoMode;
+				transformation += "/" + algoPadding;
+				ContextLogger.log(messageContext, "transformation", transformation);
+				
+				String hybTransformation = null;
+				
+//				byte[] aesKeyBytes = null;
+				byte[] ivBytes = null;
+				SecretKey secretkey = null;
+				
+				Key key = null;
+//				String encSecretKey = null;
+				byte[] encryptedSessionKey = null;
+				
+				if("AES".equals(algorithm)) {
+					
+					final String hybAlgorithm = "RSA";
+					ContextLogger.log(messageContext, "algorithm", algorithm);
+					final String hybAlgoMode = "ECB";
+					ContextLogger.log(messageContext, "algoMode", algoMode);
+					final String hybAlgoPadding = "OAEPWithSHA-256AndMGF1Padding";
+					ContextLogger.log(messageContext, "algoPadding", algoPadding);
+					final String keySize = "56";
+					ContextLogger.log(messageContext, "keySize", keySize);
+					final String iVLength = "64";
+					ContextLogger.log(messageContext, "iVLength", iVLength);
+					
+					hybTransformation = hybAlgorithm;
+					hybTransformation += "/" + hybAlgoMode;
+					hybTransformation += "/" + hybAlgoPadding;
+					ContextLogger.log(messageContext, "hybTransformation", hybTransformation);
+					
+					KeyGenerator keyGen = KeyGenerator.getInstance(algorithm);
+			        keyGen.init(Integer.parseInt(keySize));
+			        secretkey = keyGen.generateKey();
+			        
+			        final String rsaPrivKey = "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCvn/tSrsuFkJF1GA8Ypbr+cRREebMVzS4mtsqHu3sNL9TZIzcBrhJZtxW6GlRij66eoV4BBloHbVRtcUagKQhDxQo0oI1FCsR7nOS2P3RihpFsUP2Expbv9dROdC2kl8uBVdiNgMx4CROWb68tuyB4n1QDkiOQZLvwIteghCLI1STDxQcBXUHd6XGKe/Vu5DAuCHhMiO8a4seBwJSxp8znN0SM8eoUHoIXyPHtJd4/YjSWJ5a6u80bH34z5ZSE5sgEj/YFo6Y+R3KsPTbpfmfkDQmEBH78BvCnK5UKmzUWwYTqUP+33wlrwJvlRmxXsXjXYlLOQX2D+IMe1gz/2Q8TAgMBAAECggEAGpHumOy+978OcpOoPQddyf7bnRx4XpUDJXJEI9LWZAFXh15PhR6LwizzyYsQNzUbqv4o1ajbWAJPYptfnv12NaKKz7l2hfqCDV2IMJZbCkjnmWaLZFoTHcyoSRJEkYExlaiiMY5J4OMmpnzRGO8Vk4ovULb8UG0dDdCHpM444P819mqTLpnjsLdwqmZxSVPbDcP+PfmKXS5pR+IXrOct61BxOQqIPpAmrigf8Mh8QIg73r0PgdBOMc9k8w2TJ1b4ZFIkLll9yEIg2I39/jW7n0X+vVRCRXcRmretUKPWF8Y+/veHWXf2+03ayzmmxIE8l7Kuy0rQijzlTh6RnnEFAQKBgQDbCB/LRGsApIOkguQz6rj0IgQGztWut3buQXJc4ur3HmzRQwsgeNUEdtBBJZuvO2NjcN+p4WTwYnn/Fad0FC7BZgl9w911L23C8fjIVB4VWfKrzeDDx1YYct3fzATujq9lr51+pSdDXDCtvpczu+AMju2WnfLCMoncnmVvk+KskwKBgQDNRFh7gfJtkP/u6K8hcQhyJgQvV6XeSBWS6U9kKl/qWYaBZkHy3Rc2xbEXNSiB+Rzi4mJveRA4TMiKLuH4wgwGBJNrDO4hhWpm344HdJEZh6j3dUFbRI+c9EOV/qdzzZgHFSVpWFhIG0M+cpUKVg3Cs9UA0Ua0yM9oYTOcO9gjgQKBgQCgCW6ZqbL5NDtPn6e322AqWRRSGRx+XWTTrxQtlEuUJjHiMLdXkZIrgdimUSFQxvbWuKljyeFj1sBGxn6kzP5gpvp2Xv9X2UC8uOpLDVMxzJgIOhRpWCOrF3rQQ5Sy7aRwiwFrgKaQjDKxMFnwHe0Vn/UvINc4V47tmPqKrSZpawKBgQDG0Jz3O50JHLmXuI3wUSACF+pTxIwmqSEkQ5CfDyAJx56s9NOJnTVf2sk1Fkre4N9mrijzmYnpTg2rMc+zdpfYuFPlCwgXNbciXwOdGv1zgd9Zl5uu/9AuELTpslaUppzKt2OeDnCrnqRZ9vd+pGz9mdsEyK64agviKMupVpl5gQKBgD6WDf8Kg/20Gvet0ssMUSYOPkPbKJrkG/FHoMopdfQWSqZiK5TriIgqiQrTkT8GGOk/9lefxbr66mp/CNHySWh44R3IyiV+5sfMz5QarLHbvl0HRCXGUelSPP3ya0xXsapi1NoIXxoMKcChTNTTClQsca+MyxMHoB8BxDU0sfQ+";
+					ContextLogger.log(messageContext, "rsaPrivKey", rsaPrivKey);
+					key = StringToKey.stringToPrivateKey(rsaPrivKey);
+			        
+					if(null != iVLength && !iVLength.isEmpty()) {
+						ivBytes = new byte[Integer.parseInt(iVLength)/8];
+					}
+			        Cipher rsaCipher = Cipher.getInstance(hybTransformation);
+			        rsaCipher.init(Cipher.ENCRYPT_MODE, key);
+			        encryptedSessionKey = rsaCipher.doFinal(secretkey.getEncoded());
+				}
+				
+				if(Algorithm.RSA.name().equals(algorithm)) {
+					final String rsaPrivKey = "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCvn/tSrsuFkJF1GA8Ypbr+cRREebMVzS4mtsqHu3sNL9TZIzcBrhJZtxW6GlRij66eoV4BBloHbVRtcUagKQhDxQo0oI1FCsR7nOS2P3RihpFsUP2Expbv9dROdC2kl8uBVdiNgMx4CROWb68tuyB4n1QDkiOQZLvwIteghCLI1STDxQcBXUHd6XGKe/Vu5DAuCHhMiO8a4seBwJSxp8znN0SM8eoUHoIXyPHtJd4/YjSWJ5a6u80bH34z5ZSE5sgEj/YFo6Y+R3KsPTbpfmfkDQmEBH78BvCnK5UKmzUWwYTqUP+33wlrwJvlRmxXsXjXYlLOQX2D+IMe1gz/2Q8TAgMBAAECggEAGpHumOy+978OcpOoPQddyf7bnRx4XpUDJXJEI9LWZAFXh15PhR6LwizzyYsQNzUbqv4o1ajbWAJPYptfnv12NaKKz7l2hfqCDV2IMJZbCkjnmWaLZFoTHcyoSRJEkYExlaiiMY5J4OMmpnzRGO8Vk4ovULb8UG0dDdCHpM444P819mqTLpnjsLdwqmZxSVPbDcP+PfmKXS5pR+IXrOct61BxOQqIPpAmrigf8Mh8QIg73r0PgdBOMc9k8w2TJ1b4ZFIkLll9yEIg2I39/jW7n0X+vVRCRXcRmretUKPWF8Y+/veHWXf2+03ayzmmxIE8l7Kuy0rQijzlTh6RnnEFAQKBgQDbCB/LRGsApIOkguQz6rj0IgQGztWut3buQXJc4ur3HmzRQwsgeNUEdtBBJZuvO2NjcN+p4WTwYnn/Fad0FC7BZgl9w911L23C8fjIVB4VWfKrzeDDx1YYct3fzATujq9lr51+pSdDXDCtvpczu+AMju2WnfLCMoncnmVvk+KskwKBgQDNRFh7gfJtkP/u6K8hcQhyJgQvV6XeSBWS6U9kKl/qWYaBZkHy3Rc2xbEXNSiB+Rzi4mJveRA4TMiKLuH4wgwGBJNrDO4hhWpm344HdJEZh6j3dUFbRI+c9EOV/qdzzZgHFSVpWFhIG0M+cpUKVg3Cs9UA0Ua0yM9oYTOcO9gjgQKBgQCgCW6ZqbL5NDtPn6e322AqWRRSGRx+XWTTrxQtlEuUJjHiMLdXkZIrgdimUSFQxvbWuKljyeFj1sBGxn6kzP5gpvp2Xv9X2UC8uOpLDVMxzJgIOhRpWCOrF3rQQ5Sy7aRwiwFrgKaQjDKxMFnwHe0Vn/UvINc4V47tmPqKrSZpawKBgQDG0Jz3O50JHLmXuI3wUSACF+pTxIwmqSEkQ5CfDyAJx56s9NOJnTVf2sk1Fkre4N9mrijzmYnpTg2rMc+zdpfYuFPlCwgXNbciXwOdGv1zgd9Zl5uu/9AuELTpslaUppzKt2OeDnCrnqRZ9vd+pGz9mdsEyK64agviKMupVpl5gQKBgD6WDf8Kg/20Gvet0ssMUSYOPkPbKJrkG/FHoMopdfQWSqZiK5TriIgqiQrTkT8GGOk/9lefxbr66mp/CNHySWh44R3IyiV+5sfMz5QarLHbvl0HRCXGUelSPP3ya0xXsapi1NoIXxoMKcChTNTTClQsca+MyxMHoB8BxDU0sfQ+";
+					ContextLogger.log(messageContext, "rsaPrivKey", rsaPrivKey);
+					key = StringToKey.stringToPrivateKey(rsaPrivKey);
+				} 
+//				else if (Algorithm.AES.name().equals(algorithm)) {
+//					final String algoKeySize = (String) messageContext.getVariable("algoKeySize");
+//					final String algoIVLength = (String) messageContext.getVariable("algoIVLength");
+//					if(algoKeySize != null && algoKeySize.length() > 0) {
+//						aesKeyBytes = new byte[Integer.parseInt(algoKeySize)];
+//					}
+//					if(algoIVLength != null && algoIVLength.length() > 0) {
+//						aesIV = new byte[Integer.parseInt(algoIVLength) / 8];
+//					}
+//					
+//					encSecretKey = (String) messageContext.getVariable("encSecretKey");
+//					ContextLogger.log(messageContext, "encSecretKey", encSecretKey);
+//					key = new SecretKeySpec(encSecretKey.getBytes(), algorithm);
+//				}
+					
+				
+				if (EncryptionModel.STANDARD.name().equalsIgnoreCase(decryptionModel)) {
+					String output_resp = null;
+					if (EncryptionType.ALL_FIELD.name().equalsIgnoreCase(decryptionType)) {
+						if(contentType.equalsIgnoreCase(CONTNET_JSON)) {
+							ObjectMapper objectMapper = new ObjectMapper();
+							JsonNode jsonNode = objectMapper.readTree(inputPayload);
+	
+							JsonNode encodedJson = decryptJson(jsonNode, key, transformation, null, null);
+							ContextLogger.log(messageContext, "DECPayload", encodedJson.toPrettyString());
+							output_resp = encodedJson.toString();
+						}
+						else if (contentType.equalsIgnoreCase(CONTNET_XML)) {
+							String xmlRootElement = getXMLRootElement(inputPayload);
+							ObjectMapper xmlMapper = new XmlMapper();
+							JsonNode rootNode = xmlMapper.readTree(inputPayload);
+							JsonNode encodedJson = decryptJson(rootNode, key, transformation, null, null);
+							XmlMapper xmlResultMapper = new XmlMapper();
+							String encryptedXmlPayload = xmlResultMapper.writeValueAsString(encodedJson);
+							String encodedXml = encryptedXmlPayload.replace("ObjectNode", xmlRootElement);
+							ContextLogger.log(messageContext, "DECPayload", encodedXml);
+							output_resp = encodedXml;
+						} else {output_resp = "";}
+					}
+					else if (EncryptionType.SELECT_FIELD.name().equalsIgnoreCase(decryptionType)) {
+						String fields = "[\r\n"
+								+ "    \"CUSTOMER_CODE\"\r\n"
+								+ "]";
+						ObjectMapper objectMapper = new ObjectMapper();
+			            ArrayList<String> fieldsToEncrypt = objectMapper.readValue(fields, ArrayList.class);
+			            if(contentType.equalsIgnoreCase(CONTNET_JSON)) {
+							ContextLogger.log(messageContext, "fieldsToEncrypt", fields);
+							JsonNode jsonNode = objectMapper.readTree(inputPayload);
+	
+							JsonNode encodedJson = decryptJson(jsonNode, key, transformation, fieldsToEncrypt, null);
+							ContextLogger.log(messageContext, "DECPayload", encodedJson.toPrettyString());
+							output_resp = encodedJson.toString();
+			            } else if (contentType.contains("xml".toLowerCase())) {
+			            	String xmlRootElement = getXMLRootElement(inputPayload);
+							ObjectMapper xmlMapper = new XmlMapper();
+							JsonNode rootNode = xmlMapper.readTree(inputPayload);
+							JsonNode encodedJson = decryptJson(rootNode, key, transformation, fieldsToEncrypt, null);
+							XmlMapper xmlResultMapper = new XmlMapper();
+							String encryptedXmlPayload = xmlResultMapper.writeValueAsString(encodedJson);
+							String encodedXml = encryptedXmlPayload.replace("ObjectNode", xmlRootElement);
+							ContextLogger.log(messageContext, "DECPayload", encodedXml);
+							output_resp = encodedXml;
+						} else {output_resp = "";}
+					}
+					else if (EncryptionType.ALL_PAYLOAD.name().equalsIgnoreCase(decryptionType)) {
+//						final String encSecretKey = (String) messageContext.getVariable("encSecretKey");
+//						ContextLogger.log(messageContext, "encSecretKey", encSecretKey);
+//						SecretKey secretKey = new SecretKeySpec(encSecretKey.getBytes(), algorithm);
+//						IvParameterSpec ivParameterSpec = null;
+//						String enciv = "";
+//						if(null != ivBytes && ivBytes.length > 0) {
+//							System.arraycopy(secretkey.getEncoded(), 0, ivBytes, 0, ivBytes.length);
+//							ivParameterSpec = new IvParameterSpec(ivBytes);
+//							enciv = encodeToBase64(ivBytes);
+//						}
+//						String encrypt = decrypt(inputPayload, secretkey, transformation, ivParameterSpec);
+//						ContextLogger.log(messageContext, "ENCPayload", encrypt);
+//						output_resp = "{\r\n"
+//								+ "	\"encrypted_payload\" : \""+encrypt+"\",\r\n"
+//								+ "	\"encrypted_key\" : \""+Base64.getEncoder().encodeToString(encryptedSessionKey)+"\",\r\n"
+//								+ "	\"iv\" : \""+enciv+"\"\r\n"
+//								+ "}";
+//						if(contentType.equalsIgnoreCase("application/json")){
+//							ObjectMapper objectMapper = new ObjectMapper();
+//				            JsonNode jsonNode = objectMapper.readTree(output_resp);
+//				            XmlMapper xmlMapper = new XmlMapper();
+//				            String xmlOutput = xmlMapper.writeValueAsString(jsonNode);
+//				            output_resp = xmlOutput.replace("ObjectNode", "XML");
+//						} else {}
+					}
+					else {
+						output_resp = "NA";
+						ContextLogger.log(messageContext, "outputPayload", output_resp);
+					}
+//					messageContext.setVariable("outputPayload", output_resp);
+					ContextLogger.log(messageContext, "outputPayload", output_resp);
+				}
+			}
+			Boolean checksumEnabled = false;
+			if(null != checksumEnabled && checksumEnabled)
+			{	
+				ContextLogger.log(messageContext, "checksumEnabled", checksumEnabled);
+				
+				final String checksumAlgorithm = (String) messageContext.getVariable("checksumAlgorithm");
+				ContextLogger.log(messageContext, "checksumAlgorithm", checksumAlgorithm);
+				
+				final String checksumSecret = (String) messageContext.getVariable("checksumSecret");
+				String hashString = null;
+				if(checksumSecret != null && checksumSecret.length() > 0) {
+					ContextLogger.log(messageContext, "checksumSecret", checksumSecret);
+					hashString = hmacHash(inputPayload, checksumAlgorithm, checksumSecret);
+				}
+				else
+					hashString = hashString(inputPayload, checksumAlgorithm);
+				
+//				messageContext.setVariable("checksumOutput", hashString);
+				ContextLogger.log(messageContext, "checksumOutput", hashString);
+			}
+		} catch (Exception e) {
+			ContextLogger.log(messageContext, "DECException", e.getMessage());
+			e.printStackTrace();
+//			return ExecutionResult.ABORT;
+		}
+	}
+
+	public static String encodeToBase64(byte[] encryptedBytes) {
+		return Base64.getEncoder().encodeToString(encryptedBytes);
+	}
+
+	public static String decrypt(String plaintext, Key securityKey, String transformation, IvParameterSpec ivParameterSpec) throws Exception {
+		if (plaintext.isEmpty())
+			return plaintext;
+
+		Cipher cipher = Cipher.getInstance(transformation);
+		if(ivParameterSpec == null)
+			cipher.init(Cipher.DECRYPT_MODE, securityKey);
+		else
+			cipher.init(Cipher.DECRYPT_MODE, securityKey, ivParameterSpec);
+		byte[] encryptedBytes = cipher.doFinal(Base64.getDecoder().decode(plaintext));
+		return new String(encryptedBytes);
+	}
+
+	private static JsonNode decryptJson(JsonNode node, Key publicKey, String transformation, List<String> fieldsToEncrypt, IvParameterSpec ivParameterSpec) {
+		if (node.isObject()) {
+			ObjectNode objectNode = (ObjectNode) node;
+			objectNode.fields().forEachRemaining(entry -> {
+				String key = entry.getKey();
+				JsonNode value = entry.getValue();
+				if(null != fieldsToEncrypt && !fieldsToEncrypt.contains(key))
+					objectNode.set(key, new TextNode(value.asText()));
+				else	
+					objectNode.set(key, decryptJson(value, publicKey, transformation, fieldsToEncrypt, ivParameterSpec));
+			});
+		} else if (node.isArray()) {
+			ArrayNode arrayNode = (ArrayNode) node;
+			for (int i = 0; i < arrayNode.size(); i++) {
+				arrayNode.set(i, decryptJson(arrayNode.get(i), publicKey, transformation, fieldsToEncrypt, ivParameterSpec));
+			}
+		} 
+//		else if (node.isTextual() || node.isInt() || node.isDouble()) {
+		else if (node.isValueNode() && !node.isNull()) {
+			try {
+				return new TextNode(decrypt(node.asText(), publicKey, transformation, ivParameterSpec));
+			} catch (Exception e) {
+				throw new RuntimeException(e.getMessage());
+			}
+		}
+		return node;
+	}
+	
+	private static String hashString(String input, String algorithm) throws NoSuchAlgorithmException {
+        MessageDigest md = MessageDigest.getInstance(algorithm);
+        byte[] hashBytes = md.digest(input.getBytes());
+
+        StringBuilder hexStringBuilder = new StringBuilder();
+        for (byte hashByte : hashBytes) {
+            hexStringBuilder.append(String.format("%02x", hashByte));
+        }
+
+        return hexStringBuilder.toString();
+    }
+	
+	private static String hmacHash(String input, String algorithm, String secretKey) throws NoSuchAlgorithmException, InvalidKeyException {
+		Mac hmac = Mac.getInstance(algorithm);
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), algorithm);
+        hmac.init(secretKeySpec);
+        byte[] hmacBytes = hmac.doFinal(input.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hexStringBuilder = new StringBuilder();
+        for (byte hashByte : hmacBytes) {
+            hexStringBuilder.append(String.format("%02x", hashByte));
+        }
+        return hexStringBuilder.toString();
+    }
+	
+	private static String getXMLRootElement(String xmlContent) throws ParserConfigurationException, SAXException, IOException {
+		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        InputSource inputSource = new InputSource(new StringReader(xmlContent));
+        Document document = builder.parse(inputSource);
+        Element rootElement = document.getDocumentElement();
+        return rootElement.getTagName();
+	}
+}

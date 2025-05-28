@@ -1,0 +1,180 @@
+//PRODUCTION CLIENT CODE
+
+byte[] keyBytes = Base64.getDecoder().decode("MIIGljCCBX6gAwIBAgIQGTilZ7sqWReLzFLcfgJcejANBgkqhkiG9w0BAQsFADCBujELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUVudHJ1c3QsIEluYy4xKDAmBgNVBAsTH1NlZSB3d3cuZW50cnVzdC5uZXQvbGVnYWwtdGVybXMxOTA3BgNVBAsTMChjKSAyMDEyIEVudHJ1c3QsIEluYy4gLSBmb3IgYXV0aG9yaXplZCB1c2Ugb25seTEuMCwGA1UEAxMlRW50cnVzdCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eSAtIEwxSzAeFw0yNDAzMDUxMDQ5MjNaFw0yNTAzMjQxMDQ5MjJaMHQxCzAJBgNVBAYTAklOMRYwFAYDVQQIDA1NYWjEgXLEgXNodHJhMQ4wDAYDVQQHEwVUaGFuZTEbMBkGA1UEChMSSUNJQ0kgQmFuayBMaW1pdGVkMSAwHgYDVQQDExdpeHByZXNzZHAuaWNpY2liYW5rLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMamb3ghZFMg9x/5GUVCi1qRALN0WXP1uflWtlurJzHwKZSy1TpJtWxh/dvUC8/9RQfDmTHGkltGbFv5a66f4zte2OGtmtGIFRwmSVEzaR6zDjZ+x/FQhpcwpsfWFpObi5+yH8DM3O7zt+R/EXcylU3ew4R3leIALeTcMe2DrNvH+VdN1a/BSo9DGllsORc7laevJtSNah4wUBUcghLwppMu6UtQvjqyjNkUQFpeUlXIe+pUAwrkKMLV7UEFBasNKHZ3QV7m11IvTsBfz3NuT9uxTaDXhB0NHue6dlYjmgkhissg0Bk0kucONEEjYafMOYdAeV+tMc1rdzXOAmCfZXMCAwEAAaOCAtswggLXMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFO8q8SbVZYuIeLNX0eZJX/Iij0uiMB8GA1UdIwQYMBaAFIKicHTdvFM/z3vU981/p2DGCky/MGgGCCsGAQUFBwEBBFwwWjAjBggrBgEFBQcwAYYXaHR0cDovL29jc3AuZW50cnVzdC5uZXQwMwYIKwYBBQUHMAKGJ2h0dHA6Ly9haWEuZW50cnVzdC5uZXQvbDFrLWNoYWluMjU2LmNlcjAzBgNVHR8ELDAqMCigJqAkhiJodHRwOi8vY3JsLmVudHJ1c3QubmV0L2xldmVsMWsuY3JsMCIGA1UdEQQbMBmCF2l4cHJlc3NkcC5pY2ljaWJhbmsuY29tMA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwEwYDVR0gBAwwCjAIBgZngQwBAgIwggF+BgorBgEEAdZ5AgQCBIIBbgSCAWoBaAB2AE51oydcmhDDOFts1N8/Uusd8OCOG41pwLH6ZLFimjnfAAABjg47gEQAAAQDAEcwRQIgJhH0hWxiLfOAZPCSB5DXJlogTe2vs/Un6h3NBKhAZssCIQC0rBdAHJzt5Rlwxhp1oG1VVEBxbDYzgn40z/1RX7YgNwB1AObSMWNAd4zBEEEG13G5zsHSQPaWhIb7uocyHf0eN45QAAABjg47gFMAAAQDAEYwRAIge74Aq9arhuBEcNCgxJP8apiQYgmdJu78l3hXQxoQdqgCID4j58PMsOsVX298dOKpqPzvskvyQZbdGsBHnzGdk17fAHcAouMK5EXvva2bfjjtR2d3U9eCW4SU1yteGyzEuVCkR+cAAAGODjuAaAAABAMASDBGAiEA+9jHnzSIdWrSJyaHk1v8/WfLwUqRHKZrTA+ZQO7BE+MCIQD4vwmmNFiqjced2jU7OdxleVXS5hLiUDmA84S4mOXA8jANBgkqhkiG9w0BAQsFAAOCAQEAuAtCfMLOHWv8O/TvyUJltMEpOkcwJ0K1eUt2ol59KIXi+vZf1HPXzNwIjgMATNQmugxr/8pXViBQniwdkWUyXrRVUgvWhbqTb1xi1uKsEVYEghdBz54sEldV9xD7ux6LJk/+oYo7uH/LWJrFIf/BbL/VZO3b74XOqsMFlDef4lD9+i6ipE0+VZtbgS13OTTTXTUGSCjD/mXCaFNr+83z/f7X5jDlzegkRJof0o8J4RusuehEGKo8q8O+FvF4mL1lLKsSv68X/17D9HQ6MacNRbhgLTV6cBJUIRtE1+r6LdxTuOJ+YwcrYYUcvSk+c7I1CMSmpsunK2MN4lLbWbftCQ==");
+
+        X509Certificate certificate = null;
+
+        try {
+
+            certificate = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(keyBytes));
+
+        } catch (CertificateException e) {
+
+            throw new RuntimeException(e);
+
+        }
+
+        PublicKey publicKey = certificate.getPublicKey();
+
+        System.out.println(publicKey);
+
+        MappingTrace mt = container.getTrace();
+ 
+        String inputPayload = PlainJSON ;
+
+			//final String inputPayload = data.replaceAll("\\s+", "");
+
+			//final String inputPayload = data.replaceAll("     ", "").replaceAll(" ", "");
+
+      // final String inputPayload = "{\"isWorkflowRequired\":\"\",\"requestType\":\"\",\"corpid\":\"HCCL\",\"custid\":\"50916637\",\"userId\":\"\",\"remitterName\":\"\",\"feeAccount\":\"\",\"remitterAddress\":\"\",\"remitterAddress1\":\"\",\"remitterCity\":\"\",\"remitterState\":\"\",\"remitterZipCode\":\"\",\"gstin\":\"\",\"beneficiaryName\":\"\",\"beneficiaryAddress\":\"\",\"beneficiaryAddress2\":\"\",\"beneficiaryCountry\":\"\",\"beneficiaryCity\":\"\",\"beneficiaryState\":\"\",\"beneficiaryZip\":\"\",\"beneficiaryAccountNumber\":\"\",\"beneficiaryEmail\":\"\",\"processBranch\":\"\",\"requestDate\":\"00000000\",\"clientReferenceNumber\":\"1000-2000000154-2024\",\"remittanceCurrency\":\"USD\",\"equivalentCurrency\":\"\",\"remittanceAmount\":\"1100.86-\",\"paymentMode\":\"CURRENT\",\"eefcAmount\":\"0\",\"operativeAmount\":\"1100.86-\",\"operativeAccountList\":[{\"controller\":[],\"caAccountNo\":\"\",\"caAmount\":\"1100.86-\"}],\"eefcAccountList\":[],\"isIciciBankRate\":\"N\",\"isDealIdAvailable\":\"N\",\"dealIdforFxcontract\":[],\"remarks\":\"\",\"dealByBranch\":\"Y\",\"remarksForBranch\":\"\",\"foreignBankCharges\":\"BENEFICIARY\",\"intermediarybiccode\":\"\",\"beneficiaryBankBicCode\":\"\",\"beneficiaryRouting\":\"\",\"purposeCode\":\"S102\",\"typesOfGoods\":\"\",\"originOfGoods\":\"\",\"messageToBeneficiary\":\"\",\"purposeOrDescForOmtInd\":\"\",\"requestToBank\":\"\",\"hsCodeList\":\"\",\"isHscodePolicyAccepted\":\"\",\"isFemaAccepted\":\"\",\"fvc\":\"N\",\"femaDeclaration\":{\"controller\":[],\"nnlDecl\":\"\"},\"selfDeclaration\":{\"controller\":[],\"selfDecl\":\"\"},\"advancedImport\":{\"controller\":[],\"originCountry\":\"\",\"loadingPort\":\"\",\"dischargePort\":\"\",\"dischargeCountry\":\"INDIA\",\"loadingCountry\":\"\",\"shipmentTrans\":\"\",\"carryingVessel\":\"\"},\"attachmentList\":[]}";
+
+			mt.addInfo(inputPayload);
+
+        System.out.println("inputPayload"+ inputPayload);
+
+        try {
+
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+
+            keyGen.init(256);
+
+            SecretKey key = keyGen.generateKey();
+
+            System.out.println(Base64.getEncoder().encode(key.getEncoded()));
+
+            byte[] ivBytes = new byte[16];
+
+            Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+
+            rsaCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+
+            byte[] encryptedSessionKey = rsaCipher.doFinal(key.getEncoded());
+ 
+            System.out.println("Session-Key:" +Base64.getEncoder().encodeToString(encryptedSessionKey));
+ 
+            byte[] iv = new byte[16];
+
+						Pattern pattern1 = Pattern.compile("\\[(\\s*\"[^\"]+\"\\s*(,\\s*\"[^\"]+\"\\s*)*)\\]");
+
+Matcher matcher1 = pattern1.matcher(inputPayload);
+
+StringBuffer sb = new StringBuffer();
+
+while (matcher1.find()) {
+
+    String arrayContent = matcher1.group(1);
+
+    Matcher valueMatcher = Pattern.compile("\"([^\"]+)\"").matcher(arrayContent);
+
+    StringBuffer arraySb = new StringBuffer();
+
+    while (valueMatcher.find()) {
+
+        String originalValue = valueMatcher.group(1);
+
+        if(originalValue.length() > 0) {
+
+            SecretKeySpec secretKeySpec = new SecretKeySpec(key.getEncoded(), "AES");
+
+            IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+            byte[] ivAndEncryptedBytes = new byte[iv.length + originalValue.getBytes().length];
+
+            System.arraycopy(iv, 0, ivAndEncryptedBytes, 0, iv.length);
+
+            System.arraycopy(originalValue.getBytes(), 0, ivAndEncryptedBytes, iv.length, originalValue.getBytes().length);
+
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivSpec);
+
+            byte[] encryptedBytes = cipher.doFinal(ivAndEncryptedBytes);
+
+            originalValue = Base64.getEncoder().encodeToString(encryptedBytes);
+
+        }
+
+        valueMatcher.appendReplacement(arraySb, "\"\"" + originalValue + "\"");
+
+    }
+
+    valueMatcher.appendTail(arraySb);
+
+    matcher1.appendReplacement(sb, "[" + arraySb.toString() + "]");
+
+}
+
+matcher1.appendTail(sb);
+
+inputPayload =  sb.toString();
+ 
+            StringBuffer result = new StringBuffer();
+
+            Pattern pattern = Pattern.compile("\"(\\w+)\"\\s*:\\s*\"([^\"]*)\"");
+
+            Matcher matcher = pattern.matcher(inputPayload);
+
+            while (matcher.find()) {
+
+                String jsonKey = matcher.group(1);
+
+                String jsonValue = matcher.group(2);
+ 
+                String encryptedValue = null;
+
+                if(jsonValue.length() > 0) {
+
+                    SecretKeySpec secretKeySpec = new SecretKeySpec(key.getEncoded(), "AES");
+
+                    IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+                    byte[] ivAndEncryptedBytes = new byte[iv.length + jsonValue.getBytes().length];
+
+                    System.arraycopy(iv, 0, ivAndEncryptedBytes, 0, iv.length);
+
+                    System.arraycopy(jsonValue.getBytes(), 0, ivAndEncryptedBytes, iv.length, jsonValue.getBytes().length);
+ 
+                    Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+
+                    cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivSpec);
+
+                    byte[] encryptedBytes = cipher.doFinal(ivAndEncryptedBytes);
+
+                    encryptedValue = Base64.getEncoder().encodeToString(encryptedBytes);
+
+                }
+ 
+                String replacement = "\"" + jsonKey + "\": \"" + (jsonValue.length() == 0 ? jsonValue : encryptedValue) + "\"";
+
+                matcher.appendReplacement(result, replacement);
+
+            }
+
+            matcher.appendTail(result);
+
+            String addSessionKey = result.toString();
+
+            if(result.toString().endsWith("}")){
+
+                addSessionKey = addSessionKey.substring(0, result.toString().length() - 1);
+
+            }
+
+	    String Key = Base64.getEncoder().encodeToString(key.getEncoded());
+
+            String sessionKey = ","+"\"X-Session-Key\": \""+Base64.getEncoder().encodeToString(encryptedSessionKey)+"\""+","+"\"Key\": \""+Key+"\"}";
+
+            addSessionKey = addSessionKey.concat(sessionKey);
+
+            System.out.println(addSessionKey);
+
+            return addSessionKey;
+
+  }catch (Exception e) {
+
+   e.printStackTrace();
+
+  }
+
+        return "";
+ 

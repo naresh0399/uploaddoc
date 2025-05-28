@@ -1,0 +1,212 @@
+package com.apigee.decryption;
+
+import com.apigee.error.ElementDecodeException;
+import com.apigee.error.KeyInvalidException;
+import com.apigee.flow.execution.ExecutionContext;
+import com.apigee.flow.execution.ExecutionResult;
+import com.apigee.flow.execution.spi.Execution;
+import com.apigee.flow.message.MessageContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+import java.util.Map;
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+public class DTEST
+implements Execution {
+    private Map<String, String> properties;
+
+    public DTEST(Map<String, String> properties) {
+        this.properties = properties;
+    }
+
+    public ExecutionResult execute(MessageContext messageContext, ExecutionContext executionContext) {
+        try {
+            String inputPayload = (String)messageContext.getVariable(this.properties.get("inputPayload"));
+            String private_key = (String)messageContext.getVariable(this.properties.get("private_key"));
+            String encSessionKey = messageContext.getMessage().getHeader("X-Session-Key");
+            if (encSessionKey == null || encSessionKey.length() == 0) {
+                throw new KeyInvalidException("Missing SessionKey");
+            }
+            messageContext.setVariable("log inputPayload", (Object)inputPayload);
+            messageContext.setVariable("log private_key", (Object)private_key);
+            messageContext.setVariable("log X-Session-Key", (Object)encSessionKey);
+            PrivateKey recipientPrivateKey = IXCDecryptionFlow.stringToPrivateKey(private_key);
+            byte[] ivBytes = new byte[16];
+            Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            rsaCipher.init(2, recipientPrivateKey);
+            byte[] decryptedSessionKey = rsaCipher.doFinal(Base64.getDecoder().decode(encSessionKey));
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode jsonNode = objectMapper.readTree(inputPayload);
+            JsonNode decodedJson = DTEST.decodeJson(null, jsonNode, decryptedSessionKey, ivBytes);
+            messageContext.setVariable("outputPayload", (Object)decodedJson.toString());
+            String encodeToString = Base64.getEncoder().encodeToString(decryptedSessionKey);
+            messageContext.setVariable("decryptedSessionKey", (Object)encodeToString);
+            messageContext.getMessage().setHeader("decryptedSessionHeader", (Object)Base64.getEncoder().encodeToString(decryptedSessionKey));
+        } catch (Exception e) {
+            if (e instanceof IllegalArgumentException) {
+                messageContext.setVariable("DecryptionFailed", (Object)"Invalid SessionKey");
+            }
+            messageContext.setVariable("DecryptionFailed", (Object)e.getMessage());
+        }
+        return ExecutionResult.SUCCESS;
+    }
+
+    public static PrivateKey stringToPrivateKey(String privateKeyString) throws Exception {
+        byte[] keyBytes = Base64.getDecoder().decode(privateKeyString);
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePrivate(keySpec);
+    }
+
+//    public static String decrypt(String encryptedData, byte[] key, byte[] iv) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IllegalBlockSizeException, BadPaddingException {
+//        if (encryptedData.isEmpty()) {
+//            return encryptedData;
+//        }
+//        SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
+//        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+//        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+//        cipher.init(2, (Key)secretKeySpec, ivSpec);
+//        byte[] encryptedBytes = Base64.getDecoder().decode(encryptedData);
+//        byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
+//        byte[] decryptrdNewBytes = new byte[decryptedBytes.length - iv.length];
+//        System.arraycopy(decryptedBytes, iv.length, decryptrdNewBytes, 0, decryptrdNewBytes.length);
+//        return new String(decryptrdNewBytes);
+//    }
+    
+    public static String decrypt(String encryptedData, byte[] key, byte[] iv)
+            throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
+                   InvalidAlgorithmParameterException, IllegalBlockSizeException, BadPaddingException {
+
+        if (encryptedData == null || encryptedData.isEmpty()) {
+            return encryptedData;
+        }
+
+        SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
+        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivSpec);
+
+        byte[] encryptedBytes = Base64.getDecoder().decode(encryptedData);
+        byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
+
+        return new String(decryptedBytes, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+
+    private static JsonNode decodeJson(String key, JsonNode node, byte[] sessionKeyBytes, byte[] ivBytes) {
+        if (node.isObject()) {
+            ObjectNode objectNode = (ObjectNode)node;
+            objectNode.fields().forEachRemaining(entry -> {
+                String re_key = (String)entry.getKey();
+                JsonNode value = (JsonNode)entry.getValue();
+                objectNode.set(re_key, DTEST.decodeJson(re_key, value, sessionKeyBytes, ivBytes));
+            });
+        } else if (node.isArray()) {
+            ArrayNode arrayNode = (ArrayNode)node;
+            for (int i = 0; i < arrayNode.size(); ++i) {
+                arrayNode.set(i, DTEST.decodeJson(null, arrayNode.get(i), sessionKeyBytes, ivBytes));
+            }
+        } else if (node.isTextual()) {
+            try {
+                return new TextNode(DTEST.decrypt(node.asText(), sessionKeyBytes, ivBytes));
+            } catch (Exception e) {
+                String decExMsg = String.format("Decryption failed for element %s with value %s", key, node.asText());
+                throw new ElementDecodeException(decExMsg);
+            }
+        }
+        return node;
+    }
+    
+    public static void main(String[] args) throws Exception {
+    	//WORKING TEST
+    	
+    	 String inputPayload ="{\"statusList\":[{\"runningSerialNumber\":\"wx3XfIG0IxcsQQw+XmC/v514reDUdpYxAMWcLT1Bxa9ef7qOOVL/XnsF2I8+Td50eV+Ye+VY9wYop+9kixpWTA==\",\"errorCode\":\"wx3XfIG0IxcsQQw+XmC/v514reDUdpYxAMWcLT1Bxa90stf3Fx4xU+PE83ILMc8JbIFymIWeBj3Q8KMRkpwg5Q==\",\"errorDescription\":\"wx3XfIG0IxcsQQw+XmC/v514reDUdpYxAMWcLT1Bxa8eS54g1cysFsi2QE6V2dzEuSl//3oDosuGxVxzhYXM1bakeS+R4vcJASyWa+D0kkLsFBSP70BwAr0F+bTMXztiizLH5OJ5FCvshzxOF3iOwg==\"}]}";
+//         String private_key = "MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDGpm94IWRTIPcf+RlFQotakQCzdFlz9bn5VrZbqycx8CmUstU6SbVsYf3b1AvP/UUHw5kxxpJbRmxb+Wuun+M7XtjhrZrRiBUcJklRM2kesw42fsfxUIaXMKbH1haTm4ufsh/AzNzu87fkfxGMcpVN3sOEd5XiAC3k3DHtg6zbx/lXTdWvwUqPQxpZbDkXO5WnrybUjWoeMFAVHIIS8KaTLulLUL46sozZFEBaXlJVyHvqVAMK5CjC1e1BBQWrDSh2d0Fe5tdSL07AX89zbk/bsU2g14QdDR7nunZWI5oJIYrLINAZNJLnDjRBI2GnzDmHQHlfrTHNa3c1zgJgn2VzAgMBAAECggEASF4rr6TiipIw1RoHRb8HS1gV3EpfqCn1tUsMpfqFDeFDFKPNoC1oBXLxa1slboEC2+A69/IyMURHh34m53fh7SgRdK2s//ZGUnn0Lbu/6OosHFg1eMjwLzYPHC/3C5EX3XajsLYxKm/pJznPZ836bGLh8WkrVijgj0ZUfgWBPJNJWEXMn2iesIpOXpCaNcDE1f4hKEg5wsuW5G844vaG2Qo+cVN4RIZnaHaDmFa67+ukgeiJxmt9CXch+IIt7mb2C8sB0qyAYPMOzWHvU7i+WtrruOqHqVWbzQ19WMUoqulQlsc3tZM1wdWizwWApgGJdETwatafXeKtUh7BP/logQKBgQD3JTbR9IKTUMYrlyfIEL7SFGLU+M4QxZFx16WNe1yRFXkfDmNd3q3BKTEoYknifBdEwCG6FUNZUMev4xIh9V3U/Xm++ETc+dVlvSVwjGH2nxhTkiErrqCokDaD2ql2AtmI4y6fmoE3xjhrVLu8rS2n6HmkDICKDTHgtFO30p0zMwKBgQDNxG3g94C+dWiliURLNsVkVzAmbYQTEhLK5Xw3fOV7BvURr8xotlwDZxUBnTw26CaUW+fPUCJSmpL9j6ggnjmkRPbNG6sMcJyQYuWnvobwMUsHVWyvsU7NZs13mXvnveeNllQPLqsrzzCOBIQ2d6GWb8wRuinrOOKKU8GPT3UEwQKBgCnvNo4JXt6AJh/fVfCsZrReoSZh0RUncLZQUNbgx6QWcKbEWjfjQLg1tRGVG9RCGfCgaRiZ4wOUoU1GyhzY9ULef3nXxld4TK0mmuOt7jFabVZAxUAUMU5oqddVkstjUGXZpl+OZ75+87PCfNhWyhhjacBcHrNN6dimwE3AfsvhAoGAEmethF/fDiomUBg1GZ0ujskVr3pARAxrzeY09CmhxR1cMlbNK9iT5mIECP7tcePV/5Mw6uQ6DbVxzGhbG3/LnBvnD3WYGSbBelC+RgDOxRFDqsZDUHvFlq3JVxdNc+8SlSGLJ0h/Ww3PRAS3Zr/QnkolsLg8I6QU71aKi60JxIECgYArQBj45nYriLLLl2COyXGTaPDa8Gp5b9ea0JvdPjeVIRPw0IROTpRrb8ypUo0TmoQCt5L9RRqQLHqEp9uNv97H3ax7YAQQ8XThfO4eloEOBWujCX/0baV8KweApoPGOtW1kCMIBqjsWyDl4MdNF92dwnewDHeI2sGcz7UQSTxIpg==";
+////         String encSessionKey = "ker5Lywoxog4vUJgMALh6M3kP+4FI0lsUezYGMO2+uK+h7Tz7msGCIF100sdvbugW5Rr4aTzEYVePrFtUSxhVGVYCWFTeQlUi9CLAR9haz1gS4TLoxcuc3sT0gQJzJNkgoGN5gsxM+zs2WQSS+xmMRLJ1Evu+Hs/GL5p9eIy1rscUp42aHyGAXVRtpS9Oonko90LwevR0KK9ZgnwcWdcWqzNBQ9mmPJk81X5WrZ0gSjhsH33g9VivjeYoCPWoM9tQ029cSoBc2c2+mUJQuFhymD1joALT5eUfy6yi1MOXcogRAux0mRVMGMF0Pu2AC7Mr0IwWdFOx+2Izg+TSZMx7Q==";
+//         String encSessionKey="ACNxl3H7MVd1OxlNBV7f+y0iqpmfmRnGymMjPIiRlOkwsn/6FYjtbxpt/O1hY/Jtc9isXuy1ldKuuxlCv3qnCpxx2TAWOT/6LkAwcINCqmDe0qXNUOwTFALP89E69TNaz3z0Njj+BBg/Fs42dVLkmGzNBDpam/Wq9mdNKD31BNwq9OHjha5X2+6uUZm1ATdNuTmvJO9G66gwTj01+zSdma4PjVXY04eU/9mfx+mLTD916fldCdEpvgsvNMUW3RzN4pm2esc7FsrnPGI9ysXldNgorLK4fCAljWNI2GuxFffw9bZnfYGRw8beo5N+rHAf/Aocy+11jf0FqVve55b7og==";
+        
+    	//TO TEST
+    	
+    	
+//    	String inputPayload = "{\"corpid\": \"3Ozi+u/Vhvg5X9UPpOa6IOBxwWuVWKk9GhSyZKy0FL4=\",\"custid\": \"3Ozi+u/Vhvg5X9UPpOa6IIsMOMPJn9ks5AfuLA73Sqw=\",\"beneficiaryAccountNumber\": \"3Ozi+u/Vhvg5X9UPpOa6IP0J+UCjJ9XPiRRmTO5yct8=\"}";
+//    	String inputPayload="{    \"isWorkflowRequired\": \"yB1rp0F7sk7d8OcOtepcFA==\",    \"requestType\": \"+LxF2teaIsbZstG1hpHcKg==\",    \"corpid\": \"7dGJ35ko0NQ2DciOHy8i//xH0Hde9BPBos4mN4DEuF8=\",    \"custid\": \"I24Zv/dg1c1hX5ZFd+GMGA==\",    \"userId\": \"7Xx3VCUfe5YoMmZ/6nXBmQ==\"}";
+    	String private_key = "MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDGpm94IWRTIPcf+RlFQotakQCzdFlz9bn5VrZbqycx8CmUstU6SbVsYf3b1AvP/UUHw5kxxpJbRmxb+Wuun+M7XtjhrZrRiBUcJklRM2kesw42fsfxUIaXMKbH1haTm4ufsh/AzNzu87fkfxGMcpVN3sOEd5XiAC3k3DHtg6zbx/lXTdWvwUqPQxpZbDkXO5WnrybUjWoeMFAVHIIS8KaTLulLUL46sozZFEBaXlJVyHvqVAMK5CjC1e1BBQWrDSh2d0Fe5tdSL07AX89zbk/bsU2g14QdDR7nunZWI5oJIYrLINAZNJLnDjRBI2GnzDmHQHlfrTHNa3c1zgJgn2VzAgMBAAECggEASF4rr6TiipIw1RoHRb8HS1gV3EpfqCn1tUsMpfqFDeFDFKPNoC1oBXLxa1slboEC2+A69/IyMURHh34m53fh7SgRdK2s//ZGUnn0Lbu/6OosHFg1eMjwLzYPHC/3C5EX3XajsLYxKm/pJznPZ836bGLh8WkrVijgj0ZUfgWBPJNJWEXMn2iesIpOXpCaNcDE1f4hKEg5wsuW5G844vaG2Qo+cVN4RIZnaHaDmFa67+ukgeiJxmt9CXch+IIt7mb2C8sB0qyAYPMOzWHvU7i+WtrruOqHqVWbzQ19WMUoqulQlsc3tZM1wdWizwWApgGJdETwatafXeKtUh7BP/logQKBgQD3JTbR9IKTUMYrlyfIEL7SFGLU+M4QxZFx16WNe1yRFXkfDmNd3q3BKTEoYknifBdEwCG6FUNZUMev4xIh9V3U/Xm++ETc+dVlvSVwjGH2nxhTkiErrqCokDaD2ql2AtmI4y6fmoE3xjhrVLu8rS2n6HmkDICKDTHgtFO30p0zMwKBgQDNxG3g94C+dWiliURLNsVkVzAmbYQTEhLK5Xw3fOV7BvURr8xotlwDZxUBnTw26CaUW+fPUCJSmpL9j6ggnjmkRPbNG6sMcJyQYuWnvobwMUsHVWyvsU7NZs13mXvnveeNllQPLqsrzzCOBIQ2d6GWb8wRuinrOOKKU8GPT3UEwQKBgCnvNo4JXt6AJh/fVfCsZrReoSZh0RUncLZQUNbgx6QWcKbEWjfjQLg1tRGVG9RCGfCgaRiZ4wOUoU1GyhzY9ULef3nXxld4TK0mmuOt7jFabVZAxUAUMU5oqddVkstjUGXZpl+OZ75+87PCfNhWyhhjacBcHrNN6dimwE3AfsvhAoGAEmethF/fDiomUBg1GZ0ujskVr3pARAxrzeY09CmhxR1cMlbNK9iT5mIECP7tcePV/5Mw6uQ6DbVxzGhbG3/LnBvnD3WYGSbBelC+RgDOxRFDqsZDUHvFlq3JVxdNc+8SlSGLJ0h/Ww3PRAS3Zr/QnkolsLg8I6QU71aKi60JxIECgYArQBj45nYriLLLl2COyXGTaPDa8Gp5b9ea0JvdPjeVIRPw0IROTpRrb8ypUo0TmoQCt5L9RRqQLHqEp9uNv97H3ax7YAQQ8XThfO4eloEOBWujCX/0baV8KweApoPGOtW1kCMIBqjsWyDl4MdNF92dwnewDHeI2sGcz7UQSTxIpg==";
+    
+    	String encSessionKey="Ecj/zrZreuOMc4Cn/YnYNFMP/G9whaZMpDKuH9ne6lygoKLPsZoN2okS+N7en9FZqOIB53IANJKzWVQrDcn5k+RMShQxf6X8Afz08lZuzzOvt1mrWya3/LFj58tVoX25+tjVcboZ5xDRahDFnrGlWkA9KoNq+vvk4K92Vl2wr7I9t4rJJ/r2F2T0au+TA/CriNInszzMDK7f3ugkCFpRR1NielPG43A99wanf81fjei7h9rPp6JRpgNXXvK3K+cIATfxX43s09KiADpx2kMo3RInX2XYObze1UIkIrexFa3HlX5C0W4yTRtQtTsWV6i9ohX36kJ0YMM+eILM1CKbqg==";
+    	if (encSessionKey == null || encSessionKey.length() == 0) {
+             throw new KeyInvalidException("Missing SessionKey");
+         }
+        System.out.println("log inputPayload: "+ (Object)inputPayload);
+        System.out.println("log private_key: "+ (Object)private_key);
+        System.out.println("log X-Session-Key"+ (Object)encSessionKey);
+         PrivateKey recipientPrivateKey = DTEST.stringToPrivateKey(private_key);
+         byte[] ivBytes = new byte[16];
+         Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+         rsaCipher.init(2, recipientPrivateKey);
+//         byte[] decryptedSessionKey = rsaCipher.doFinal(Base64.getDecoder().decode(encSessionKey));
+         byte[] decryptedSessionKey =Base64.getDecoder().decode("PD6U9L6AUTN+smjJcPz4udzfXMPSfNUsdRxfSVhlvHA=");
+         ObjectMapper objectMapper = new ObjectMapper();
+         JsonNode jsonNode = objectMapper.readTree(inputPayload);
+         JsonNode decodedJson = DTEST.decodeJson(null, jsonNode, decryptedSessionKey, ivBytes);
+         System.out.println("outputPayload: "+ (Object)decodedJson.toString());
+         String encodeToString = Base64.getEncoder().encodeToString(decryptedSessionKey);
+         System.out.println("decryptedSessionKey: "+ (Object)encodeToString);
+         System.out.println("decryptedSessionHeader :"+ (Object)Base64.getEncoder().encodeToString(decryptedSessionKey));
+    	
+    }
+//    public static void main(String[] args) throws Exception {
+//
+//        String inputPayload = "{\r\n"
+//        		+ "  \"name\" : \"sgdtLxtQfrySX1NAc/vrYpKW0xeyi4nIBBzOpMVfuUg=\",\r\n"
+//        		+ "  \"email\" : \"sgdtLxtQfrySX1NAc/vrYr//52I41k7RKyND8uVDoz9rxWqKsaUPM6vQea54BOjn\"\r\n"
+//        		+ "}";
+//
+//        String private_key = "MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDGpm94IWRTIPcf+RlFQotakQCzdFlz9bn5VrZbqycx8CmUstU6SbVsYf3b1AvP/UUHw5kxxpJbRmxb+Wuun+M7XtjhrZrRiBUcJklRM2kesw42fsfxUIaXMKbH1haTm4ufsh/AzNzu87fkfxGMcpVN3sOEd5XiAC3k3DHtg6zbx/lXTdWvwUqPQxpZbDkXO5WnrybUjWoeMFAVHIIS8KaTLulLUL46sozZFEBaXlJVyHvqVAMK5CjC1e1BBQWrDSh2d0Fe5tdSL07AX89zbk/bsU2g14QdDR7nunZWI5oJIYrLINAZNJLnDjRBI2GnzDmHQHlfrTHNa3c1zgJgn2VzAgMBAAECggEASF4rr6TiipIw1RoHRb8HS1gV3EpfqCn1tUsMpfqFDeFDFKPNoC1oBXLxa1slboEC2+A69/IyMURHh34m53fh7SgRdK2s//ZGUnn0Lbu/6OosHFg1eMjwLzYPHC/3C5EX3XajsLYxKm/pJznPZ836bGLh8WkrVijgj0ZUfgWBPJNJWEXMn2iesIpOXpCaNcDE1f4hKEg5wsuW5G844vaG2Qo+cVN4RIZnaHaDmFa67+ukgeiJxmt9CXch+IIt7mb2C8sB0qyAYPMOzWHvU7i+WtrruOqHqVWbzQ19WMUoqulQlsc3tZM1wdWizwWApgGJdETwatafXeKtUh7BP/logQKBgQD3JTbR9IKTUMYrlyfIEL7SFGLU+M4QxZFx16WNe1yRFXkfDmNd3q3BKTEoYknifBdEwCG6FUNZUMev4xIh9V3U/Xm++ETc+dVlvSVwjGH2nxhTkiErrqCokDaD2ql2AtmI4y6fmoE3xjhrVLu8rS2n6HmkDICKDTHgtFO30p0zMwKBgQDNxG3g94C+dWiliURLNsVkVzAmbYQTEhLK5Xw3fOV7BvURr8xotlwDZxUBnTw26CaUW+fPUCJSmpL9j6ggnjmkRPbNG6sMcJyQYuWnvobwMUsHVWyvsU7NZs13mXvnveeNllQPLqsrzzCOBIQ2d6GWb8wRuinrOOKKU8GPT3UEwQKBgCnvNo4JXt6AJh/fVfCsZrReoSZh0RUncLZQUNbgx6QWcKbEWjfjQLg1tRGVG9RCGfCgaRiZ4wOUoU1GyhzY9ULef3nXxld4TK0mmuOt7jFabVZAxUAUMU5oqddVkstjUGXZpl+OZ75+87PCfNhWyhhjacBcHrNN6dimwE3AfsvhAoGAEmethF/fDiomUBg1GZ0ujskVr3pARAxrzeY09CmhxR1cMlbNK9iT5mIECP7tcePV/5Mw6uQ6DbVxzGhbG3/LnBvnD3WYGSbBelC+RgDOxRFDqsZDUHvFlq3JVxdNc+8SlSGLJ0h/Ww3PRAS3Zr/QnkolsLg8I6QU71aKi60JxIECgYArQBj45nYriLLLl2COyXGTaPDa8Gp5b9ea0JvdPjeVIRPw0IROTpRrb8ypUo0TmoQCt5L9RRqQLHqEp9uNv97H3ax7YAQQ8XThfO4eloEOBWujCX/0baV8KweApoPGOtW1kCMIBqjsWyDl4MdNF92dwnewDHeI2sGcz7UQSTxIpg==";
+//
+//        String encSessionKey = "hESyrG0s/tDWZyR1OrNgHdlDIS0z0l9DsQ00K22UEXB/n6TsJISKz2ifdE3PHmVPinfsQThIcwu2yrcTNxXVtmZR8hlHS3xpz/IFxiKa9VwKHkVORFJnz9pyZZIuBrEDKthc6qa+kEwmKeHU3qEdOfwbtNn/p2h+7chvvVJcyHU5IFk1CN60LQYHDGp2Vr6DZebH+7n38aU5sJyGw7c59lOcl/AiAhAnTNgeVa3Ng8WONiIr5o3/NNpQm9kPMqFfJ9rZoqvikDEJOfA5jCJWGcIQMVyi9zyZ54f+cD+KnAN7NB5/EOPKJln3aKuY9dPjteubZa0ua/suGT3tIz3DRA=="; // Must be valid
+//     
+//
+//        PrivateKey recipientPrivateKey = DTEST.stringToPrivateKey(private_key);
+//     
+//        
+//
+//        Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+//
+//        rsaCipher.init(Cipher.DECRYPT_MODE, recipientPrivateKey);
+//
+//        byte[] decryptedSessionKey = rsaCipher.doFinal(Base64.getDecoder().decode(encSessionKey));
+//     
+//        
+//
+//        byte[] ivBytes = new byte[16]; // Assuming zero IV
+//
+//        ObjectMapper objectMapper = new ObjectMapper();
+//
+//        JsonNode jsonNode = objectMapper.readTree(inputPayload);
+//
+//        JsonNode decryptedJson = decodeJson(null, jsonNode, decryptedSessionKey, ivBytes);
+//     
+//        System.out.println("Decrypted payload: " + decryptedJson.toPrettyString());
+
+//    }
+
+     
+}
+
